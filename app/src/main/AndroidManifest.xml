@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Diperlukan hanya untuk menampilkan Floating Control (Pause/Resume/Stop) di atas aplikasi lain -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- Android 11+ package visibility terbatas hanya ke aplikasi target yang relevan (tanpa QUERY_ALL_PACKAGES) -->
+    <queries>
+        <package android:name="com.shopee.id" />
+        <package android:name="com.shopee.my" />
+        <package android:name="com.shopee.sg" />
+        <package android:name="com.shopee.ph" />
+        <package android:name="com.shopee.th" />
+        <package android:name="com.shopee.vn" />
+        <package android:name="com.shopee.tw" />
+        <package android:name="com.shopee.br" />
+        <package android:name="com.tokopedia.tkpd" />
+        <package android:name="com.lazada.android" />
+        <package android:name="com.ss.android.ugc.trill" />
+        <package android:name="com.zhiliaoapp.musically" />
+        <package android:name="com.instagram.android" />
+        <package android:name="com.google.android.youtube" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.AutoScroll">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/Theme.AutoScroll">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- AccessibilityService untuk mendeteksi aplikasi target (Shopee) dan menjalankan dispatchGesture() -->
+        <service
+            android:name=".service.AutoScrollAccessibilityService"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+    </application>
+
+</manifest>

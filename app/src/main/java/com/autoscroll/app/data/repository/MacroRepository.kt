@@ -44,11 +44,11 @@ class MacroRepository(context: Context) {
                 macroId = 0L,
                 orderIndex = idx,
                 actionType = action.type.name,
-                startX = action.startX,
-                startY = action.startY,
-                endX = action.endX,
-                endY = action.endY,
-                durationMs = action.durationMs.coerceIn(20L, 5000L),
+                startXPercent = action.startXPercent.coerceIn(0.01f, 0.99f),
+                startYPercent = action.startYPercent.coerceIn(0.01f, 0.99f),
+                endXPercent = action.endXPercent.coerceIn(0.01f, 0.99f),
+                endYPercent = action.endYPercent.coerceIn(0.01f, 0.99f),
+                durationMs = action.durationMs.coerceIn(0L, 5000L),
                 delayAfterMs = action.delayAfterMs.coerceIn(0L, 300_000L),
                 note = action.note
             )
@@ -73,11 +73,11 @@ class MacroRepository(context: Context) {
                 macroId = macroId,
                 orderIndex = idx,
                 actionType = action.type.name,
-                startX = action.startX,
-                startY = action.startY,
-                endX = action.endX,
-                endY = action.endY,
-                durationMs = action.durationMs.coerceIn(20L, 5000L),
+                startXPercent = action.startXPercent.coerceIn(0.01f, 0.99f),
+                startYPercent = action.startYPercent.coerceIn(0.01f, 0.99f),
+                endXPercent = action.endXPercent.coerceIn(0.01f, 0.99f),
+                endYPercent = action.endYPercent.coerceIn(0.01f, 0.99f),
+                durationMs = action.durationMs.coerceIn(0L, 5000L),
                 delayAfterMs = action.delayAfterMs.coerceIn(0L, 300_000L),
                 note = action.note
             )

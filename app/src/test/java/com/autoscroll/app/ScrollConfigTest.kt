@@ -1,14 +1,15 @@
 package com.autoscroll.app
 
 import com.autoscroll.app.data.model.CustomTimeUnit
+import com.autoscroll.app.data.model.CoordinatePickMode
 import com.autoscroll.app.data.model.IntervalPreset
 import com.autoscroll.app.data.model.MacroAction
 import com.autoscroll.app.data.model.MacroActionType
 import com.autoscroll.app.data.model.ScrollConfig
 import com.autoscroll.app.data.model.ScrollDirection
 import com.autoscroll.app.data.model.ScrollSpeed
+import com.autoscroll.app.util.CoordinateUtils
 import com.autoscroll.app.util.GestureCalculator
-import com.autoscroll.app.util.GestureClassifier
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,64 +63,82 @@ class ScrollConfigTest {
     }
 
     @Test
-    fun `gesture classifier differentiates tap, double tap, long press, and vertical scroll`() {
-        val firstTap = GestureClassifier.classifyTouch(
-            startX = 500f,
-            startY = 1100f,
-            endX = 504f,
-            endY = 1103f,
-            durationMs = 70L,
-            delaySincePreviousUpMs = 2000L,
-            previousAction = null,
-            nextOrderIndex = 0
-        )
-        assertEquals(MacroActionType.TAP, firstTap.type)
+    fun `coordinate utils converts percentage coordinates accurately across resolutions`() {
+        val pctX = CoordinateUtils.pixelToPercent(540f, 1080)
+        val pctY = CoordinateUtils.pixelToPercent(1200f, 2400)
+        assertEquals(0.5f, pctX, 0.01f)
+        assertEquals(0.5f, pctY, 0.01f)
 
-        val doubleTap = GestureClassifier.classifyTouch(
-            startX = 505f,
-            startY = 1105f,
-            endX = 506f,
-            endY = 1104f,
-            durationMs = 60L,
-            delaySincePreviousUpMs = 150L,
-            previousAction = firstTap,
-            nextOrderIndex = 1
+        // Adaptive playback on 1440x3200 screen
+        val tapStroke = CoordinateUtils.resolvePixelStroke(
+            action = MacroAction(
+                type = MacroActionType.TAP,
+                startXPercent = pctX,
+                startYPercent = pctY,
+                durationMs = 80L
+            ),
+            screenWidthPx = 1440,
+            screenHeightPx = 3200
         )
-        assertEquals(MacroActionType.DOUBLE_TAP, doubleTap.type)
+        assertEquals(720f, tapStroke.startX, 1f)
+        assertEquals(1600f, tapStroke.startY, 1f)
 
-        val longPress = GestureClassifier.classifyTouch(
-            startX = 300f,
-            startY = 900f,
-            endX = 302f,
-            endY = 901f,
-            durationMs = 720L,
-            delaySincePreviousUpMs = 1000L,
-            previousAction = firstTap,
-            nextOrderIndex = 2
+        // Scroll Down swipes upward (startY > endY), Scroll Up swipes downward (startY < endY)
+        val scrollDown = CoordinateUtils.resolvePixelStroke(
+            action = MacroAction(type = MacroActionType.SCROLL_DOWN, startXPercent = 0.5f, startYPercent = 0.72f),
+            screenWidthPx = 1080,
+            screenHeightPx = 2400
         )
-        assertEquals(MacroActionType.LONG_PRESS, longPress.type)
+        assertTrue(scrollDown.startY > scrollDown.endY)
 
-        val scroll = GestureClassifier.classifyTouch(
-            startX = 540f,
-            startY = 1700f,
-            endX = 542f,
-            endY = 750f,
-            durationMs = 450L,
-            delaySincePreviousUpMs = 1000L,
-            previousAction = longPress,
-            nextOrderIndex = 3
+        val scrollUp = CoordinateUtils.resolvePixelStroke(
+            action = MacroAction(type = MacroActionType.SCROLL_UP, startXPercent = 0.5f, startYPercent = 0.28f),
+            screenWidthPx = 1080,
+            screenHeightPx = 2400
         )
-        assertEquals(MacroActionType.SCROLL, scroll.type)
+        assertTrue(scrollUp.startY < scrollUp.endY)
+    }
+
+    @Test
+    fun `coordinate picker applies swipe points and edits the end point independently`() {
+        val swipe = CoordinateUtils.applyPickedCoordinates(
+            action = MacroAction(type = MacroActionType.TAP),
+            pickMode = CoordinatePickMode.SINGLE_POINT,
+            startXPercent = 0.2f,
+            startYPercent = 0.3f,
+            endXPercent = 0.8f,
+            endYPercent = 0.7f,
+            forceSwipeType = true
+        )
+        assertEquals(MacroActionType.SWIPE, swipe.type)
+        assertEquals(0.2f, swipe.startXPercent, 0.001f)
+        assertEquals(0.3f, swipe.startYPercent, 0.001f)
+        assertEquals(0.8f, swipe.endXPercent, 0.001f)
+        assertEquals(0.7f, swipe.endYPercent, 0.001f)
+
+        val editedEnd = CoordinateUtils.applyPickedCoordinates(
+            action = swipe,
+            pickMode = CoordinatePickMode.EDIT_END_ONLY,
+            startXPercent = 0.4f,
+            startYPercent = 0.6f,
+            endXPercent = null,
+            endYPercent = null,
+            forceSwipeType = false
+        )
+        assertEquals(0.2f, editedEnd.startXPercent, 0.001f)
+        assertEquals(0.3f, editedEnd.startYPercent, 0.001f)
+        assertEquals(0.4f, editedEnd.endXPercent, 0.001f)
+        assertEquals(0.6f, editedEnd.endYPercent, 0.001f)
     }
 
     @Test
     fun `reorderAction moves action and updates orderIndex cleanly`() {
         val list = listOf(
             MacroAction(orderIndex = 0, type = MacroActionType.TAP, note = "A"),
-            MacroAction(orderIndex = 1, type = MacroActionType.SCROLL, note = "B"),
+            MacroAction(orderIndex = 1, type = MacroActionType.SCROLL_DOWN, note = "B"),
             MacroAction(orderIndex = 2, type = MacroActionType.SWIPE, note = "C")
         )
-        val reordered = GestureClassifier.reorderAction(list, 2, 0)
+        val reordered = CoordinateUtils.reorderAction(list, 2, 0)
         assertEquals(listOf("C", "A", "B"), reordered.map { it.note })
         assertEquals(listOf(0, 1, 2), reordered.map { it.orderIndex })
     }

@@ -1,5 +1,6 @@
 package com.autoscroll.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -7,8 +8,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AddLocationAlt
 import androidx.compose.material.icons.rounded.Bookmark
-import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -17,6 +18,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,9 +30,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.autoscroll.app.ui.screen.DashboardScreen
+import com.autoscroll.app.ui.screen.MacroBuilderScreen
 import com.autoscroll.app.ui.screen.MyMacrosScreen
 import com.autoscroll.app.ui.screen.PermissionsScreen
-import com.autoscroll.app.ui.screen.RecorderScreen
 import com.autoscroll.app.ui.theme.AutoScrollTheme
 import com.autoscroll.app.ui.theme.ShopeeOrange
 import com.autoscroll.app.ui.theme.ShopeeOrangeSoft
@@ -40,20 +42,24 @@ import com.autoscroll.app.ui.viewmodel.MainViewModel
 
 private enum class AppTab(val label: String) {
     AUTO_SCROLL("Auto Scroll"),
-    RECORDER("Rekam"),
+    MACRO_BUILDER("Buat Macro"),
     MY_MACROS("My Macros")
 }
 
 class MainActivity : ComponentActivity() {
+
+    private var openSaveTabTrigger by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        handleIntentFlag(intent)
         setContent {
             AutoScrollTheme {
                 val viewModel: MainViewModel = viewModel()
                 val config by viewModel.config.collectAsState()
                 val runtimeState by viewModel.runtimeState.collectAsState()
-                val recordingState by viewModel.recordingState.collectAsState()
+                val builderState by viewModel.builderState.collectAsState()
                 val playbackState by viewModel.playbackState.collectAsState()
                 val savedMacros by viewModel.savedMacros.collectAsState()
                 val permissions by viewModel.permissions.collectAsState()
@@ -62,6 +68,14 @@ class MainActivity : ComponentActivity() {
 
                 var showPermissions by rememberSaveable { mutableStateOf(false) }
                 var selectedTab by rememberSaveable { mutableStateOf(AppTab.AUTO_SCROLL) }
+
+                LaunchedEffect(openSaveTabTrigger, builderState.hasPendingSaveDraft) {
+                    if (openSaveTabTrigger || builderState.hasPendingSaveDraft) {
+                        selectedTab = AppTab.MACRO_BUILDER
+                        showPermissions = false
+                        openSaveTabTrigger = false
+                    }
+                }
 
                 val lifecycleOwner = LocalLifecycleOwner.current
                 DisposableEffect(lifecycleOwner) {
@@ -96,7 +110,7 @@ class MainActivity : ComponentActivity() {
                                             Icon(
                                                 imageVector = when (tab) {
                                                     AppTab.AUTO_SCROLL -> Icons.Rounded.SwapVert
-                                                    AppTab.RECORDER -> Icons.Rounded.FiberManualRecord
+                                                    AppTab.MACRO_BUILDER -> Icons.Rounded.AddLocationAlt
                                                     AppTab.MY_MACROS -> Icons.Rounded.Bookmark
                                                 },
                                                 contentDescription = tab.label
@@ -140,28 +154,34 @@ class MainActivity : ComponentActivity() {
                                     onOpenPermissions = { showPermissions = true }
                                 )
 
-                                AppTab.RECORDER -> RecorderScreen(
+                                AppTab.MACRO_BUILDER -> MacroBuilderScreen(
                                     config = config,
-                                    recordingState = recordingState,
-                                    onSelectCaptureMethod = viewModel::setCaptureMethod,
-                                    onStartRecording = {
-                                        viewModel.startRecording(
+                                    builderState = builderState,
+                                    onCreateNewMacro = {
+                                        viewModel.startMacroBuilder(
                                             onRequirePermissions = { showPermissions = true }
                                         )
                                     },
-                                    onStopRecording = viewModel::stopRecording,
+                                    onStopBuilderAndShowSave = viewModel::stopBuilderSessionForSave,
                                     onOpenTargetApp = viewModel::openTargetApp,
+                                    onUpdateDraftActions = viewModel::updatePendingDraftActions,
                                     onSaveMacro = { name, repeat ->
-                                        viewModel.saveRecordedMacro(name, repeat)
+                                        viewModel.saveBuiltMacro(name, repeat)
                                         selectedTab = AppTab.MY_MACROS
                                     },
-                                    onDiscardDraft = viewModel::discardRecordingDraft,
+                                    onDiscardDraft = viewModel::discardBuiltDraft,
                                     onOpenPermissions = { showPermissions = true }
                                 )
 
                                 AppTab.MY_MACROS -> MyMacrosScreen(
                                     macros = savedMacros,
                                     playbackState = playbackState,
+                                    onCreateNewMacro = {
+                                        viewModel.startMacroBuilder(
+                                            onRequirePermissions = { showPermissions = true }
+                                        )
+                                        selectedTab = AppTab.MACRO_BUILDER
+                                    },
                                     onUseMacro = { macro ->
                                         viewModel.useMacro(
                                             macro = macro,
@@ -172,7 +192,6 @@ class MainActivity : ComponentActivity() {
                                     onUpdateRepeat = viewModel::updateMacroRepeat,
                                     onSaveEditedActions = viewModel::saveEditedActions,
                                     onDeleteMacro = viewModel::deleteMacro,
-                                    onGoToRecorder = { selectedTab = AppTab.RECORDER },
                                     onOpenPermissions = { showPermissions = true }
                                 )
                             }
@@ -181,5 +200,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntentFlag(intent)
+    }
+
+    private fun handleIntentFlag(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_OPEN_SAVE_MACRO, false) == true) {
+            openSaveTabTrigger = true
+        }
+    }
+
+    companion object {
+        const val EXTRA_OPEN_SAVE_MACRO = "extra_open_save_macro"
     }
 }

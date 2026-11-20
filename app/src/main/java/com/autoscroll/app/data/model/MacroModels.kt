@@ -2,17 +2,18 @@ package com.autoscroll.app.data.model
 
 enum class FloatingControlMode {
     AUTO_SCROLL,
-    RECORDING,
+    MACRO_BUILDER,
     MACRO_PLAYBACK
 }
 
-enum class MacroActionType(val label: String) {
-    TAP("Tap"),
-    DOUBLE_TAP("Double Tap"),
-    LONG_PRESS("Long Press"),
-    SWIPE("Swipe"),
-    SCROLL("Scroll"),
-    DELAY("Jeda")
+enum class MacroActionType(val label: String, val usesEndPoint: Boolean) {
+    TAP("Tap", false),
+    DOUBLE_TAP("Double Tap", false),
+    LONG_PRESS("Long Press", false),
+    SWIPE("Swipe", true),
+    SCROLL_UP("Scroll Up", false),
+    SCROLL_DOWN("Scroll Down", false),
+    WAIT("Wait", false)
 }
 
 enum class PlaybackStatus(val label: String) {
@@ -23,19 +24,32 @@ enum class PlaybackStatus(val label: String) {
     ERROR("Gagal")
 }
 
-enum class RecordingCaptureMethod(val label: String) {
-    OVERLAY_PASSTHROUGH("Overlay Capture + Forward"),
-    ACCESSIBILITY_EVENTS("Accessibility Node Events")
+enum class BuilderOverlayStep {
+    TOOLBAR,
+    PICKING_COORDINATE,
+    CONFIGURING_ACTION,
+    ACTION_LIST
 }
 
+enum class CoordinatePickMode {
+    SINGLE_POINT,
+    SWIPE_START_END,
+    EDIT_START_ONLY,
+    EDIT_END_ONLY
+}
+
+/**
+ * Koordinat disimpan sebagai rasio persentase layar (0.0f .. 1.0f)
+ * sehingga tetap akurat di berbagai resolusi & orientasi perangkat.
+ */
 data class MacroAction(
     val id: Long = 0L,
     val orderIndex: Int = 0,
-    val type: MacroActionType,
-    val startX: Float = 540f,
-    val startY: Float = 1200f,
-    val endX: Float = 540f,
-    val endY: Float = 1200f,
+    val type: MacroActionType = MacroActionType.TAP,
+    val startXPercent: Float = 0.50f,
+    val startYPercent: Float = 0.55f,
+    val endXPercent: Float = 0.50f,
+    val endYPercent: Float = 0.25f,
     val durationMs: Long = 80L,
     val delayAfterMs: Long = 800L,
     val note: String = ""
@@ -52,13 +66,14 @@ data class MacroRecord(
     val actions: List<MacroAction> = emptyList()
 )
 
-data class RecordingState(
-    val isRecording: Boolean = false,
-    val elapsedSeconds: Long = 0L,
-    val captureMethod: RecordingCaptureMethod = RecordingCaptureMethod.OVERLAY_PASSTHROUGH,
-    val capturedActions: List<MacroAction> = emptyList(),
-    val hasPendingDraft: Boolean = false,
-    val lastCaptureNotice: String? = null
+data class MacroBuilderState(
+    val isActive: Boolean = false,
+    val step: BuilderOverlayStep = BuilderOverlayStep.TOOLBAR,
+    val pickMode: CoordinatePickMode = CoordinatePickMode.SINGLE_POINT,
+    val editingActionIndex: Int? = null,
+    val draftAction: MacroAction = MacroAction(),
+    val actions: List<MacroAction> = emptyList(),
+    val hasPendingSaveDraft: Boolean = false
 )
 
 data class MacroPlaybackState(

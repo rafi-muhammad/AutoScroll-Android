@@ -3,6 +3,8 @@ package com.autoscroll.app.ui.screen
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AddLocationAlt
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Delete
@@ -61,25 +64,24 @@ import com.autoscroll.app.data.model.MacroRecord
 import com.autoscroll.app.ui.theme.BackgroundSoft
 import com.autoscroll.app.ui.theme.BorderHairline
 import com.autoscroll.app.ui.theme.ShopeeOrange
-import com.autoscroll.app.ui.theme.ShopeeOrangeSoft
 import com.autoscroll.app.ui.theme.StatusActiveGreen
 import com.autoscroll.app.ui.theme.StatusActiveGreenSoft
 import com.autoscroll.app.ui.theme.SurfaceWhite
 import com.autoscroll.app.ui.theme.TextPrimary
 import com.autoscroll.app.ui.theme.TextSecondary
-import com.autoscroll.app.util.GestureClassifier
+import com.autoscroll.app.util.CoordinateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyMacrosScreen(
     macros: List<MacroRecord>,
     playbackState: MacroPlaybackState,
+    onCreateNewMacro: () -> Unit,
     onUseMacro: (MacroRecord) -> Unit,
     onRenameMacro: (Long, String) -> Unit,
     onUpdateRepeat: (Long, Int) -> Unit,
     onSaveEditedActions: (Long, List<MacroAction>) -> Unit,
     onDeleteMacro: (Long) -> Unit,
-    onGoToRecorder: () -> Unit,
     onOpenPermissions: () -> Unit
 ) {
     var renamingMacro by remember { mutableStateOf<MacroRecord?>(null) }
@@ -99,6 +101,10 @@ fun MyMacrosScreen(
                     )
                 },
                 actions = {
+                    TextButton(onClick = onCreateNewMacro) {
+                        Icon(imageVector = Icons.Rounded.Add, contentDescription = null, tint = ShopeeOrange)
+                        Text("Create New", color = ShopeeOrange, fontWeight = FontWeight.Bold)
+                    }
                     IconButton(onClick = onOpenPermissions) {
                         Icon(
                             imageVector = Icons.Rounded.Settings,
@@ -137,17 +143,18 @@ fun MyMacrosScreen(
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Rekam gerakan di Shopee atau aplikasi lain menggunakan tab Rekam, lalu simpan ke Room Database.",
+                                text = "Buat macro koordinat langsung di atas aplikasi target menggunakan Floating Crosshair Picker lalu simpan ke Room Database.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = TextSecondary
                             )
                             Spacer(modifier = Modifier.height(14.dp))
                             Button(
-                                onClick = onGoToRecorder,
+                                onClick = onCreateNewMacro,
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = ShopeeOrange)
                             ) {
-                                Text("Mulai Rekam Macro")
+                                Icon(imageVector = Icons.Rounded.AddLocationAlt, contentDescription = null)
+                                Text("Create New Macro", modifier = Modifier.padding(start = 6.dp))
                             }
                         }
                     }
@@ -231,7 +238,7 @@ fun MyMacrosScreen(
         AlertDialog(
             onDismissRequest = { deletingMacro = null },
             title = { Text("Hapus Macro?") },
-            text = { Text("Rekaman \"${target.name}\" beserta ${target.actions.size} gerakan di dalamnya akan dihapus permanen.") },
+            text = { Text("Macro \"${target.name}\" beserta ${target.actions.size} gerakan di dalamnya akan dihapus permanen.") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -354,7 +361,7 @@ private fun MacroItemCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun MacroActionsEditorSheet(
     macro: MacroRecord,
@@ -379,22 +386,23 @@ private fun MacroActionsEditorSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Edit Gerakan: ${macro.name}", style = MaterialTheme.typography.titleMedium)
-                    Text("Ubah urutan, durasi, jeda, atau tambah aksi baru.", style = MaterialTheme.typography.bodySmall)
+                    Text("Ubah urutan, koordinat (%), durasi, atau delay.", style = MaterialTheme.typography.bodySmall)
                 }
                 OutlinedButton(
                     onClick = {
                         val nextIdx = draftActions.size
-                        draftActions = draftActions + MacroAction(
+                        val added = MacroAction(
                             orderIndex = nextIdx,
                             type = MacroActionType.TAP,
-                            startX = 540f,
-                            startY = 1200f,
-                            endX = 540f,
-                            endY = 1200f,
+                            startXPercent = 0.50f,
+                            startYPercent = 0.55f,
+                            endXPercent = 0.50f,
+                            endYPercent = 0.25f,
                             durationMs = 80L,
-                            delayAfterMs = 700L,
-                            note = "Tap Manual (540, 1200)"
+                            delayAfterMs = 800L,
+                            note = "Tap (50.0%, 55.0%)"
                         )
+                        draftActions = draftActions + added
                     },
                     shape = RoundedCornerShape(10.dp)
                 ) {
@@ -407,7 +415,7 @@ private fun MacroActionsEditorSheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(340.dp),
+                    .height(360.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 itemsIndexed(draftActions) { index, action ->
@@ -431,7 +439,7 @@ private fun MacroActionsEditorSheet(
                                 Row {
                                     IconButton(
                                         onClick = {
-                                            draftActions = GestureClassifier.reorderAction(draftActions, index, index - 1)
+                                            draftActions = CoordinateUtils.reorderAction(draftActions, index, index - 1)
                                         },
                                         enabled = index > 0
                                     ) {
@@ -439,7 +447,7 @@ private fun MacroActionsEditorSheet(
                                     }
                                     IconButton(
                                         onClick = {
-                                            draftActions = GestureClassifier.reorderAction(draftActions, index, index + 1)
+                                            draftActions = CoordinateUtils.reorderAction(draftActions, index, index + 1)
                                         },
                                         enabled = index < draftActions.lastIndex
                                     ) {
@@ -447,8 +455,7 @@ private fun MacroActionsEditorSheet(
                                     }
                                     IconButton(
                                         onClick = {
-                                            draftActions = draftActions.filterIndexed { i, _ -> i != index }
-                                                .mapIndexed { i, a -> a.copy(orderIndex = i) }
+                                            draftActions = CoordinateUtils.deleteActionAt(draftActions, index)
                                         }
                                     ) {
                                         Icon(Icons.Rounded.Delete, contentDescription = "Hapus Aksi", tint = Color(0xFFDC2626))
@@ -456,16 +463,91 @@ private fun MacroActionsEditorSheet(
                                 }
                             }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf(MacroActionType.TAP, MacroActionType.SCROLL, MacroActionType.SWIPE, MacroActionType.DELAY).forEach { typeOpt ->
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                MacroActionType.entries.forEach { typeOpt ->
                                     FilterChip(
                                         selected = action.type == typeOpt,
                                         onClick = {
+                                            val updated = action.copy(
+                                                type = typeOpt,
+                                                durationMs = CoordinateUtils.defaultDurationFor(typeOpt)
+                                            )
                                             draftActions = draftActions.toMutableList().also { list ->
-                                                list[index] = action.copy(type = typeOpt)
+                                                list[index] = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
                                             }
                                         },
                                         label = { Text(typeOpt.label) }
+                                    )
+                                }
+                            }
+
+                            if (action.type != MacroActionType.WAIT) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = (action.startXPercent * 100f).toInt().toString(),
+                                        onValueChange = { raw ->
+                                            val pct = (raw.filter { it.isDigit() }.toIntOrNull()?.coerceIn(1, 99) ?: 50) / 100f
+                                            val updated = action.copy(startXPercent = pct)
+                                            draftActions = draftActions.toMutableList().also {
+                                                it[index] = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
+                                            }
+                                        },
+                                        label = { Text("Start X (%)") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = (action.startYPercent * 100f).toInt().toString(),
+                                        onValueChange = { raw ->
+                                            val pct = (raw.filter { it.isDigit() }.toIntOrNull()?.coerceIn(1, 99) ?: 55) / 100f
+                                            val updated = action.copy(startYPercent = pct)
+                                            draftActions = draftActions.toMutableList().also {
+                                                it[index] = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
+                                            }
+                                        },
+                                        label = { Text("Start Y (%)") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+
+                            if (action.type == MacroActionType.SWIPE) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = (action.endXPercent * 100f).toInt().toString(),
+                                        onValueChange = { raw ->
+                                            val pct = (raw.filter { it.isDigit() }.toIntOrNull()?.coerceIn(1, 99) ?: 50) / 100f
+                                            val updated = action.copy(endXPercent = pct)
+                                            draftActions = draftActions.toMutableList().also {
+                                                it[index] = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
+                                            }
+                                        },
+                                        label = { Text("End X (%)") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = (action.endYPercent * 100f).toInt().toString(),
+                                        onValueChange = { raw ->
+                                            val pct = (raw.filter { it.isDigit() }.toIntOrNull()?.coerceIn(1, 99) ?: 25) / 100f
+                                            val updated = action.copy(endYPercent = pct)
+                                            draftActions = draftActions.toMutableList().also {
+                                                it[index] = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
+                                            }
+                                        },
+                                        label = { Text("End Y (%)") },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
@@ -475,7 +557,7 @@ private fun MacroActionsEditorSheet(
                                 OutlinedTextField(
                                     value = action.durationMs.toString(),
                                     onValueChange = { raw ->
-                                        val valMs = raw.filter { it.isDigit() }.toLongOrNull()?.coerceIn(20L, 5000L) ?: action.durationMs
+                                        val valMs = raw.filter { it.isDigit() }.toLongOrNull()?.coerceIn(0L, 5000L) ?: action.durationMs
                                         draftActions = draftActions.toMutableList().also { list ->
                                             list[index] = action.copy(durationMs = valMs)
                                         }
@@ -493,7 +575,7 @@ private fun MacroActionsEditorSheet(
                                             list[index] = action.copy(delayAfterMs = valDelay)
                                         }
                                     },
-                                    label = { Text("Jeda (ms)") },
+                                    label = { Text("Delay (ms)") },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f)

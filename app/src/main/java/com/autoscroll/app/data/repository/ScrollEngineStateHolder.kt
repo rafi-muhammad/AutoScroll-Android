@@ -1,21 +1,23 @@
 package com.autoscroll.app.data.repository
 
 import android.content.Context
+import com.autoscroll.app.data.model.BuilderOverlayStep
+import com.autoscroll.app.data.model.CoordinatePickMode
 import com.autoscroll.app.data.model.CustomTimeUnit
 import com.autoscroll.app.data.model.FloatingControlMode
 import com.autoscroll.app.data.model.IntervalPreset
 import com.autoscroll.app.data.model.MacroAction
 import com.autoscroll.app.data.model.MacroActionType
+import com.autoscroll.app.data.model.MacroBuilderState
 import com.autoscroll.app.data.model.MacroPlaybackState
 import com.autoscroll.app.data.model.MacroRecord
 import com.autoscroll.app.data.model.PlaybackStatus
-import com.autoscroll.app.data.model.RecordingCaptureMethod
-import com.autoscroll.app.data.model.RecordingState
 import com.autoscroll.app.data.model.ScrollConfig
 import com.autoscroll.app.data.model.ScrollDirection
 import com.autoscroll.app.data.model.ScrollRuntimeState
 import com.autoscroll.app.data.model.ScrollSpeed
 import com.autoscroll.app.data.model.TargetApp
+import com.autoscroll.app.util.CoordinateUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -27,8 +29,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Centralized state hub coordinating:
- * - Auto Scroll (existing behavior preserved)
- * - Gesture Recording (Capture-and-Forward + Accessibility Event fallback)
+ * - Auto Scroll (preserved)
+ * - Floating Coordinate-Based Macro Builder (Picker, Action Settings, Action List, Stop & Save)
  * - Macro Playback (Room-persisted active macro)
  * - Single Dynamic Floating Control Mode
  */
@@ -58,8 +60,8 @@ object ScrollEngineStateHolder {
     private val _isFloatingVisible = MutableStateFlow(false)
     val isFloatingVisible: StateFlow<Boolean> = _isFloatingVisible.asStateFlow()
 
-    private val _recordingState = MutableStateFlow(RecordingState())
-    val recordingState: StateFlow<RecordingState> = _recordingState.asStateFlow()
+    private val _builderState = MutableStateFlow(MacroBuilderState())
+    val builderState: StateFlow<MacroBuilderState> = _builderState.asStateFlow()
 
     private val _playbackState = MutableStateFlow(MacroPlaybackState())
     val playbackState: StateFlow<MacroPlaybackState> = _playbackState.asStateFlow()
@@ -67,7 +69,6 @@ object ScrollEngineStateHolder {
     @Volatile
     private var initialized = false
     private var macroRepository: MacroRepository? = null
-    private var lastActionTimestampMs: Long = 0L
 
     fun init(context: Context) {
         if (initialized) return
@@ -166,7 +167,7 @@ object ScrollEngineStateHolder {
             )
         }
         if (!connected) {
-            _recordingState.update { it.copy(isRecording = false) }
+            _builderState.update { it.copy(isActive = false, step = BuilderOverlayStep.TOOLBAR) }
             _playbackState.update {
                 if (it.status == PlaybackStatus.PLAYING || it.status == PlaybackStatus.PAUSED) {
                     it.copy(status = PlaybackStatus.IDLE, currentActionIndex = 0)
@@ -180,17 +181,8 @@ object ScrollEngineStateHolder {
 
     // --- Mode A: Auto Scroll ---
 
-    fun selectAutoScrollMode(showFloating: Boolean = false) {
-        stopRecordingInternal(keepDraft = false)
-        stopMacroPlaybackInternal()
-        _floatingMode.value = FloatingControlMode.AUTO_SCROLL
-        if (showFloating) {
-            _isFloatingVisible.value = true
-        }
-    }
-
     fun startAutoScroll() {
-        stopRecordingInternal(keepDraft = false)
+        stopBuilderInternal(keepPendingSave = false)
         stopMacroPlaybackInternal()
         _floatingMode.value = FloatingControlMode.AUTO_SCROLL
         _isFloatingVisible.value = true
@@ -275,90 +267,223 @@ object ScrollEngineStateHolder {
         return foregroundPkg.equals(targetPkg, ignoreCase = true)
     }
 
-    // --- Mode B: Gesture Recording ---
+    // --- Mode B: Coordinate-Based Macro Builder ---
 
-    fun setRecordingCaptureMethod(method: RecordingCaptureMethod) {
-        _recordingState.update { it.copy(captureMethod = method) }
-    }
-
-    fun startRecordingSession() {
+    fun startMacroBuilderSession() {
         stopAutoScrollInternal()
         stopMacroPlaybackInternal()
-        _floatingMode.value = FloatingControlMode.RECORDING
+        _floatingMode.value = FloatingControlMode.MACRO_BUILDER
         _isFloatingVisible.value = true
-        lastActionTimestampMs = System.currentTimeMillis()
-        _recordingState.update {
-            it.copy(
-                isRecording = true,
-                elapsedSeconds = 0L,
-                capturedActions = emptyList(),
-                hasPendingDraft = false,
-                lastCaptureNotice = null
+        _builderState.value = MacroBuilderState(
+            isActive = true,
+            step = BuilderOverlayStep.TOOLBAR,
+            pickMode = CoordinatePickMode.SINGLE_POINT,
+            editingActionIndex = null,
+            draftAction = MacroAction(),
+            actions = emptyList(),
+            hasPendingSaveDraft = false
+        )
+    }
+
+    fun beginAddNewActionCoordinatePicker() {
+        _builderState.update { current ->
+            current.copy(
+                step = BuilderOverlayStep.PICKING_COORDINATE,
+                pickMode = CoordinatePickMode.SINGLE_POINT,
+                editingActionIndex = null,
+                draftAction = MacroAction(
+                    orderIndex = current.actions.size,
+                    type = MacroActionType.TAP,
+                    startXPercent = 0.50f,
+                    startYPercent = 0.55f,
+                    endXPercent = 0.50f,
+                    endYPercent = 0.25f,
+                    durationMs = CoordinateUtils.defaultDurationFor(MacroActionType.TAP),
+                    delayAfterMs = 800L
+                )
             )
         }
     }
 
-    fun tickRecordingElapsed() {
-        _recordingState.update { state ->
-            if (!state.isRecording) state else state.copy(elapsedSeconds = state.elapsedSeconds + 1L)
+    fun beginRepickCoordinate(pickMode: CoordinatePickMode) {
+        _builderState.update { current ->
+            current.copy(
+                step = BuilderOverlayStep.PICKING_COORDINATE,
+                pickMode = pickMode
+            )
         }
     }
 
-    fun appendRecordedAction(action: MacroAction) {
-        val now = System.currentTimeMillis()
-        val gapMs = if (lastActionTimestampMs > 0L) (now - lastActionTimestampMs).coerceIn(100L, 30_000L) else 600L
-        lastActionTimestampMs = now
+    fun confirmPickedCoordinates(
+        startXPercent: Float,
+        startYPercent: Float,
+        endXPercent: Float?,
+        endYPercent: Float?,
+        forceSwipeType: Boolean
+    ) {
+        _builderState.update { current ->
+            val updatedDraft = CoordinateUtils.applyPickedCoordinates(
+                action = current.draftAction,
+                pickMode = current.pickMode,
+                startXPercent = startXPercent,
+                startYPercent = startYPercent,
+                endXPercent = endXPercent,
+                endYPercent = endYPercent,
+                forceSwipeType = forceSwipeType
+            )
+            val finalizedDraft = updatedDraft.copy(
+                note = CoordinateUtils.buildSummaryNote(updatedDraft)
+            )
+            current.copy(
+                step = BuilderOverlayStep.CONFIGURING_ACTION,
+                draftAction = finalizedDraft
+            )
+        }
+    }
 
-        _recordingState.update { state ->
-            if (!state.isRecording) return@update state
-            val updatedList = state.capturedActions.toMutableList()
-            if (updatedList.isNotEmpty()) {
-                val lastIdx = updatedList.lastIndex
-                // Jika double tap menggantikan tap sebelumnya dalam < 320ms, gabungkan menjadi 1 DOUBLE_TAP
-                if (action.type == MacroActionType.DOUBLE_TAP && updatedList[lastIdx].type == MacroActionType.TAP) {
-                    updatedList[lastIdx] = action.copy(orderIndex = lastIdx)
-                    return@update state.copy(capturedActions = updatedList, lastCaptureNotice = null)
-                }
-                updatedList[lastIdx] = updatedList[lastIdx].copy(delayAfterMs = gapMs)
+    fun cancelCoordinatePicker() {
+        _builderState.update { current ->
+            val fallbackStep = if (current.editingActionIndex != null) {
+                BuilderOverlayStep.CONFIGURING_ACTION
+            } else {
+                BuilderOverlayStep.TOOLBAR
             }
-            updatedList.add(action.copy(orderIndex = updatedList.size))
-            state.copy(capturedActions = updatedList, lastCaptureNotice = null)
+            current.copy(step = fallbackStep)
         }
     }
 
-    fun reportRecordingNotice(message: String) {
-        _recordingState.update { it.copy(lastCaptureNotice = message) }
+    fun updateDraftActionType(type: MacroActionType) {
+        _builderState.update { current ->
+            val updated = current.draftAction.copy(
+                type = type,
+                durationMs = CoordinateUtils.defaultDurationFor(type)
+            )
+            current.copy(
+                draftAction = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
+            )
+        }
     }
 
-    fun stopRecordingSession() {
-        val hasActions = _recordingState.value.capturedActions.isNotEmpty()
-        _recordingState.update { state ->
-            state.copy(
-                isRecording = false,
-                hasPendingDraft = hasActions
+    fun adjustDraftDuration(deltaMs: Long? = null, exactMs: Long? = null) {
+        _builderState.update { current ->
+            val base = exactMs ?: (current.draftAction.durationMs + (deltaMs ?: 0L))
+            val clamped = if (current.draftAction.type == MacroActionType.WAIT) 0L else base.coerceIn(40L, 5000L)
+            current.copy(
+                draftAction = current.draftAction.copy(durationMs = clamped)
+            )
+        }
+    }
+
+    fun adjustDraftDelay(deltaMs: Long? = null, exactMs: Long? = null) {
+        _builderState.update { current ->
+            val base = exactMs ?: (current.draftAction.delayAfterMs + (deltaMs ?: 0L))
+            val clamped = base.coerceIn(0L, 60_000L)
+            val updated = current.draftAction.copy(delayAfterMs = clamped)
+            current.copy(
+                draftAction = updated.copy(note = CoordinateUtils.buildSummaryNote(updated))
+            )
+        }
+    }
+
+    fun saveDraftActionToBuilderList() {
+        _builderState.update { current ->
+            val list = current.actions.toMutableList()
+            val editIdx = current.editingActionIndex
+            val ready = current.draftAction.copy(
+                note = CoordinateUtils.buildSummaryNote(current.draftAction)
+            )
+            if (editIdx != null && editIdx in list.indices) {
+                list[editIdx] = ready.copy(orderIndex = editIdx)
+            } else {
+                list.add(ready.copy(orderIndex = list.size))
+            }
+            current.copy(
+                step = BuilderOverlayStep.TOOLBAR,
+                editingActionIndex = null,
+                actions = list.mapIndexed { idx, act -> act.copy(orderIndex = idx) }
+            )
+        }
+    }
+
+    fun cancelActionConfiguration() {
+        _builderState.update { current ->
+            current.copy(
+                step = if (current.editingActionIndex != null) BuilderOverlayStep.ACTION_LIST else BuilderOverlayStep.TOOLBAR,
+                editingActionIndex = null
+            )
+        }
+    }
+
+    fun openBuilderActionList() {
+        _builderState.update { it.copy(step = BuilderOverlayStep.ACTION_LIST) }
+    }
+
+    fun closeBuilderActionList() {
+        _builderState.update { it.copy(step = BuilderOverlayStep.TOOLBAR) }
+    }
+
+    fun editBuilderAction(index: Int) {
+        _builderState.update { current ->
+            val target = current.actions.getOrNull(index) ?: return@update current
+            current.copy(
+                step = BuilderOverlayStep.CONFIGURING_ACTION,
+                editingActionIndex = index,
+                draftAction = target
+            )
+        }
+    }
+
+    fun moveBuilderAction(fromIndex: Int, toIndex: Int) {
+        _builderState.update { current ->
+            current.copy(
+                actions = CoordinateUtils.reorderAction(current.actions, fromIndex, toIndex)
+            )
+        }
+    }
+
+    fun deleteBuilderAction(index: Int) {
+        _builderState.update { current ->
+            current.copy(
+                actions = CoordinateUtils.deleteActionAt(current.actions, index)
+            )
+        }
+    }
+
+    fun stopAndRequestSaveMacro() {
+        val hasActions = _builderState.value.actions.isNotEmpty()
+        _builderState.update { current ->
+            current.copy(
+                isActive = false,
+                step = BuilderOverlayStep.TOOLBAR,
+                editingActionIndex = null,
+                hasPendingSaveDraft = hasActions
             )
         }
         _isFloatingVisible.value = false
         _floatingMode.value = FloatingControlMode.AUTO_SCROLL
     }
 
-    fun discardRecordingDraft() {
-        _recordingState.update {
-            it.copy(
-                isRecording = false,
-                elapsedSeconds = 0L,
-                capturedActions = emptyList(),
-                hasPendingDraft = false,
-                lastCaptureNotice = null
+    fun updatePendingSaveDraftActions(actions: List<MacroAction>) {
+        _builderState.update { current ->
+            current.copy(
+                actions = actions.mapIndexed { idx, a ->
+                    a.copy(orderIndex = idx, note = CoordinateUtils.buildSummaryNote(a))
+                }
             )
         }
     }
 
-    private fun stopRecordingInternal(keepDraft: Boolean) {
-        _recordingState.update { state ->
-            state.copy(
-                isRecording = false,
-                hasPendingDraft = if (keepDraft) state.hasPendingDraft else false
+    fun discardBuilderDraft() {
+        _builderState.value = MacroBuilderState()
+    }
+
+    private fun stopBuilderInternal(keepPendingSave: Boolean) {
+        _builderState.update { current ->
+            current.copy(
+                isActive = false,
+                step = BuilderOverlayStep.TOOLBAR,
+                editingActionIndex = null,
+                hasPendingSaveDraft = if (keepPendingSave) current.hasPendingSaveDraft else false
             )
         }
     }
@@ -375,7 +500,7 @@ object ScrollEngineStateHolder {
     fun selectActiveMacro(context: Context, macro: MacroRecord) {
         init(context)
         stopAutoScrollInternal()
-        stopRecordingInternal(keepDraft = false)
+        stopBuilderInternal(keepPendingSave = false)
         macroRepository?.setPersistedActiveMacroId(macro.id)
         _floatingMode.value = FloatingControlMode.MACRO_PLAYBACK
         _isFloatingVisible.value = true
@@ -414,7 +539,7 @@ object ScrollEngineStateHolder {
             return
         }
         stopAutoScrollInternal()
-        stopRecordingInternal(keepDraft = false)
+        stopBuilderInternal(keepPendingSave = false)
         _floatingMode.value = FloatingControlMode.MACRO_PLAYBACK
         _isFloatingVisible.value = true
         _playbackState.update {

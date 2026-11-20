@@ -8,10 +8,9 @@ import com.autoscroll.app.data.model.CustomTimeUnit
 import com.autoscroll.app.data.model.FloatingControlMode
 import com.autoscroll.app.data.model.IntervalPreset
 import com.autoscroll.app.data.model.MacroAction
+import com.autoscroll.app.data.model.MacroBuilderState
 import com.autoscroll.app.data.model.MacroPlaybackState
 import com.autoscroll.app.data.model.MacroRecord
-import com.autoscroll.app.data.model.RecordingCaptureMethod
-import com.autoscroll.app.data.model.RecordingState
 import com.autoscroll.app.data.model.ScrollConfig
 import com.autoscroll.app.data.model.ScrollDirection
 import com.autoscroll.app.data.model.ScrollRuntimeState
@@ -35,7 +34,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val config: StateFlow<ScrollConfig> = ScrollEngineStateHolder.config
     val runtimeState: StateFlow<ScrollRuntimeState> = ScrollEngineStateHolder.runtimeState
     val floatingMode: StateFlow<FloatingControlMode> = ScrollEngineStateHolder.floatingMode
-    val recordingState: StateFlow<RecordingState> = ScrollEngineStateHolder.recordingState
+    val builderState: StateFlow<MacroBuilderState> = ScrollEngineStateHolder.builderState
     val playbackState: StateFlow<MacroPlaybackState> = ScrollEngineStateHolder.playbackState
 
     val savedMacros: StateFlow<List<MacroRecord>> = macroRepository.allMacros
@@ -130,31 +129,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Recording ---
+    // --- Coordinate-Based Macro Builder ---
 
-    fun setCaptureMethod(method: RecordingCaptureMethod) {
-        ScrollEngineStateHolder.setRecordingCaptureMethod(method)
-    }
-
-    fun startRecording(onRequirePermissions: () -> Unit) {
+    fun startMacroBuilder(onRequirePermissions: () -> Unit) {
         refreshSystemState()
         if (!_permissions.value.allGranted) {
-            _uiMessage.value = "Izin Aksesibilitas dan Overlay diperlukan untuk merekam gesture."
+            _uiMessage.value = "Izin Aksesibilitas dan Overlay diperlukan untuk Macro Builder & Coordinate Picker."
             onRequirePermissions()
             return
         }
-        ScrollEngineStateHolder.startRecordingSession()
-        _uiMessage.value = "Mode REC aktif. Buka ${config.value.targetAppName} lalu lakukan gesture."
+        ScrollEngineStateHolder.startMacroBuilderSession()
+        _uiMessage.value = "Floating Macro Builder aktif. Buka ${config.value.targetAppName} dan tekan + Tambah Gerakan."
     }
 
-    fun stopRecording() {
-        ScrollEngineStateHolder.stopRecordingSession()
+    fun stopBuilderSessionForSave() {
+        ScrollEngineStateHolder.stopAndRequestSaveMacro()
     }
 
-    fun saveRecordedMacro(name: String, repeatCount: Int) {
-        val actions = recordingState.value.capturedActions
+    fun updatePendingDraftActions(actions: List<MacroAction>) {
+        ScrollEngineStateHolder.updatePendingSaveDraftActions(actions)
+    }
+
+    fun saveBuiltMacro(name: String, repeatCount: Int) {
+        val actions = builderState.value.actions
         if (actions.isEmpty()) {
-            _uiMessage.value = "Belum ada gesture yang terekam."
+            _uiMessage.value = "Belum ada gerakan yang ditambahkan."
             return
         }
         val cfg = config.value
@@ -166,17 +165,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 actions = actions,
                 repeatCount = repeatCount
             )
-            ScrollEngineStateHolder.discardRecordingDraft()
+            ScrollEngineStateHolder.discardBuilderDraft()
             val saved = macroRepository.getMacroById(savedId)
             if (saved != null) {
                 ScrollEngineStateHolder.selectActiveMacro(getApplication(), saved)
             }
-            _uiMessage.value = "Macro \"$name\" disimpan dan siap dijalankan."
+            _uiMessage.value = "Macro \"$name\" disimpan ke Room DB dan siap dijalankan."
         }
     }
 
-    fun discardRecordingDraft() {
-        ScrollEngineStateHolder.discardRecordingDraft()
+    fun discardBuiltDraft() {
+        ScrollEngineStateHolder.discardBuilderDraft()
     }
 
     // --- My Macros & Playback ---

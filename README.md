@@ -1,6 +1,6 @@
 # Auto Scroll (Android Kotlin & Jetpack Compose)
 
-**Auto Scroll** adalah aplikasi Android native berbasis **Kotlin** dan **Jetpack Compose (Material 3)** untuk melakukan scroll layar otomatis sekaligus merekam dan memutar ulang rangkaian gesture (Macro) ketika Anda membuka aplikasi lain seperti Shopee, Tokopedia, Lazada, TikTok, atau Instagram. Seluruh gerakan dijalankan langsung di atas aplikasi target menggunakan `AccessibilityService.dispatchGesture()` tanpa akses root.
+**Auto Scroll** adalah aplikasi Android native berbasis **Kotlin** dan **Jetpack Compose (Material 3)** untuk melakukan scroll layar otomatis sekaligus menyusun dan memutar rangkaian otomatisasi (**Floating Coordinate-Based Macro Builder**) ketika Anda membuka aplikasi lain seperti Shopee, Tokopedia, Lazada, TikTok, atau Instagram. Seluruh gerakan dijalankan langsung di atas aplikasi target menggunakan `AccessibilityService.dispatchGesture()` tanpa akses root.
 
 ---
 
@@ -16,27 +16,32 @@
 4. **Pemilihan Aplikasi Target**
    Secara default mengarah ke `com.shopee.id`, namun Anda bebas memilih aplikasi lain yang terpasang di HP. Auto Scroll hanya berjalan saat aplikasi target berada di layar depan.
 
-### 2. Gesture Recorder / Macro Recorder
-1. **Rekam Interaksi dari Floating Control**
-   Mulai perekaman dari tab **Rekam**, lalu berpindah ke aplikasi target. Ketuk, tekan lama, swipe, atau scroll langsung di layar; Floating Control akan menampilkan badge `REC`, durasi `MM:SS`, jumlah gesture terekam, serta tombol **Stop Recording**.
-2. **Jenis Gesture yang Didukung**
-   Mendukung perekaman **Tap**, **Double Tap**, **Long Press**, **Swipe**, **Scroll**, dan **Jeda (Delay)** antar gerakan lengkap dengan koordinat awal dan akhir, durasi, serta urutan aksi.
-3. **Catatan Teknis Android Non-Root**
-   Pada Android tanpa akses root, aplikasi lain tidak diizinkan membaca koordinat sentuhan mentah secara pasif di layar aplikasi target. Karena itu, mode **Overlay Capture + Forward** menangkap sentuhan pada lapisan overlay transparan (`TouchCaptureOverlay`) lalu langsung meneruskannya ke aplikasi target lewat `dispatchGesture()`. Layar sensitif yang memakai `FLAG_SECURE` tetap dilindungi oleh sistem Android.
+### 2. Floating Coordinate-Based Macro Builder
+1. **Susun Macro Langsung di Atas Aplikasi Target**
+   Pilih **Create New Macro** di aplikasi Auto Scroll, lalu buka aplikasi target Anda. Tekan **Tambah Gerakan** pada Floating Control untuk masuk ke mode **Coordinate Picker**.
+2. **Coordinate Picker Transparan & Persentase Layar**
+   - Menampilkan overlay transparan dengan crosshair yang dapat digeser langsung ke posisi tombol atau area target, lengkap dengan pembacaan koordinat X dan Y real-time.
+   - Mendukung **1 titik koordinat** untuk Tap, Double Tap, dan Long Press, serta **2 titik koordinat (Start Position dan End Position)** untuk Swipe.
+   - Setelah menekan **Confirm Location**, koordinat X dan Y disimpan otomatis sebagai **persentase ukuran layar (`0.0%` sampai `100.0%`)** sehingga tetap akurat di berbagai resolusi.
+   - Tidak mengandalkan `AccessibilityEvent` untuk membaca koordinat sentuhan mentah dan tidak memblokir sentuhan pada aplikasi target di luar mode pemilihan titik.
+3. **Pengaturan Lengkap Setiap Action**
+   Setelah lokasi dikonfirmasi, pengguna dapat memilih **Action Type** (`Tap`, `Double Tap`, `Long Press`, `Swipe`, `Scroll Up`, `Scroll Down`, atau `Wait`), melihat atau mengubah koordinat X dan Y (serta Start/End untuk Swipe), mengatur **Gesture Duration**, dan menentukan **Delay Before Next Action**.
+4. **Daftar Gerakan di Floating Control & Stop & Save**
+   Seluruh aksi yang sudah dibuat dapat dilihat langsung dari Floating Control (melihat daftar, tambah baru, edit koordinat, ganti action type, ubah durasi/delay, ubah urutan naik/turun, atau hapus). Tekan **Stop & Save** untuk memberi nama dan menyimpan macro ke Room Database.
 
 ### 3. My Macros (Room Database)
-Seluruh rekaman disimpan secara lokal di **Room Database** sehingga tetap aman saat aplikasi ditutup atau HP direstart. Di tab **My Macros**, Anda dapat:
+Seluruh macro disimpan secara lokal di **Room Database** sehingga tetap aman saat aplikasi ditutup atau HP direstart. Di tab **My Macros**, Anda dapat:
 - Memilih dan mengaktifkan macro ke Floating Control lewat tombol **Use Macro**.
 - Mengganti nama macro.
-- Mengedit urutan gerakan (naik atau turunkan posisi aksi), menambah aksi baru, menghapus aksi tertentu, serta mengubah tipe aksi, durasi (`ms`), dan jeda (`ms`).
+- Mengedit urutan gerakan (naik atau turunkan posisi aksi), menambah aksi baru, menghapus aksi tertentu, serta mengubah tipe aksi, koordinat persentase X/Y, durasi (`ms`), dan delay (`ms`).
 - Mengatur jumlah pengulangan (**Repeat**, 1 sampai 999 kali).
-- Menghapus rekaman disertai dialog konfirmasi.
+- Menghapus macro disertai dialog konfirmasi.
 
 ### 4. Dynamic Floating Control (1 Window untuk 3 Mode)
-Aplikasi memakai satu kontrol melayang (`SYSTEM_ALERT_WINDOW`) yang isinya berubah otomatis mengikuti mode aktif:
+Aplikasi memakai satu kontrol melayang (`SYSTEM_ALERT_WINDOW`) yang tampilannya berubah dinamis mengikuti mode aktif:
 - **Mode Auto Scroll**: menampilkan status aktif, interval atau hitung mundur, hitungan scroll, serta tombol **Start**, **Pause / Resume**, dan **Stop**.
-- **Mode Recording**: menampilkan badge **REC**, durasi perekaman, jumlah gesture terekam, dan tombol **Stop Recording**.
-- **Mode Macro Playback**: menampilkan nama macro terpilih, progress langkah (misalnya `7/12 Aksi`), status playback, serta tombol **Play / Play Ulang**, **Pause / Resume**, dan **Stop**. Setelah seluruh aksi selesai dijalankan, status berubah menjadi **Completed** dan tidak berulang otomatis kecuali opsi **Repeat** diatur lebih dari 1 kali.
+- **Mode Macro Builder**: menampilkan jumlah aksi terkumpul, tombol **Tambah Gerakan**, tombol **Daftar** untuk mengelola urutan aksi, editor pengaturan action setelah lokasi dipilih, serta tombol **Stop & Save**.
+- **Mode Macro Playback**: menampilkan nama macro terpilih, progress langkah (misalnya `3/5 Aksi`), status playback, serta tombol **Play / Play Ulang**, **Pause / Resume**, dan **Stop**. Setelah seluruh aksi selesai dijalankan, status berubah menjadi **Completed** dan tidak berulang otomatis kecuali opsi **Repeat** diatur lebih dari 1 kali.
 
 ---
 
@@ -80,8 +85,8 @@ AutoScroll/
         │       │       └── ScrollEngineStateHolder.kt
         │       ├── service/
         │       │   ├── AutoScrollAccessibilityService.kt
-        │       │   ├── FloatingControlOverlay.kt
-        │       │   └── TouchCaptureOverlay.kt
+        │       │   ├── CoordinatePickerOverlay.kt
+        │       │   └── FloatingControlOverlay.kt
         │       ├── ui/
         │       │   ├── components/
         │       │   │   ├── IntervalSelectorCard.kt
@@ -89,14 +94,14 @@ AutoScroll/
         │       │   │   └── TargetAppCard.kt
         │       │   ├── screen/
         │       │   │   ├── DashboardScreen.kt
+        │       │   │   ├── MacroBuilderScreen.kt
         │       │   │   ├── MyMacrosScreen.kt
-        │       │   │   ├── PermissionsScreen.kt
-        │       │   │   └── RecorderScreen.kt
+        │       │   │   └── PermissionsScreen.kt
         │       │   ├── theme/Theme.kt
         │       │   └── viewmodel/MainViewModel.kt
         │       └── util/
+        │           ├── CoordinateUtils.kt
         │           ├── GestureCalculator.kt
-        │           ├── GestureClassifier.kt
         │           └── PermissionHelper.kt
         └── test/
             └── java/com/autoscroll/app/ScrollConfigTest.kt
@@ -112,8 +117,8 @@ AutoScroll/
 - **Database Lokal**: Room + KSP
 - **Tanpa Root**: Semua fitur berjalan memakai API resmi Android.
 - **Izin yang Dipakai**:
-  - `BIND_ACCESSIBILITY_SERVICE`: Menjalankan `dispatchGesture()` untuk Auto Scroll maupun pemutaran Macro dan membaca aplikasi aktif di layar depan.
-  - `SYSTEM_ALERT_WINDOW`: Menampilkan Floating Control dinamis dan overlay perekaman sentuhan.
+  - `BIND_ACCESSIBILITY_SERVICE`: Menjalankan `dispatchGesture()` untuk Auto Scroll maupun pemutaran Macro dan memantau aplikasi aktif di layar depan.
+  - `SYSTEM_ALERT_WINDOW`: Menampilkan Floating Control dinamis dan overlay Coordinate Picker saat memilih titik lokasi.
   - `<queries>` pada `AndroidManifest.xml`: Membaca daftar aplikasi target pada Android 11 ke atas tanpa izin `QUERY_ALL_PACKAGES`.
 
 ---
@@ -161,18 +166,21 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 3. Di tab **Auto Scroll**, pilih aplikasi target, interval, arah, kecepatan, serta durasi scroll.
 4. Tekan **Mulai Auto Scroll**, lalu buka aplikasi target Anda.
 
-### Merekam & Memutar Macro
-1. Buka tab **Rekam**, lalu tekan **Mulai Rekam (Mode REC)**.
-2. Pindah ke aplikasi target (misalnya Shopee), lakukan sentuhan atau scroll seperti biasa. Floating Control akan menghitung durasi dan jumlah gesture.
-3. Setelah selesai, tekan **Stop Recording** pada Floating Control, beri nama macro, atur jumlah pengulangan bila perlu, lalu simpan ke **My Macros**.
-4. Buka tab **My Macros**, pilih rekaman Anda, lalu tekan **Use Macro**.
-5. Pindah ke aplikasi target, lalu tekan **Play** pada Floating Control untuk menjalankan seluruh urutan gerakan.
+### Membuat & Memutar Macro (Coordinate Builder)
+1. Buka tab **Buat Macro**, lalu tekan **Create New Macro**.
+2. Pindah ke aplikasi target (misalnya Shopee). Floating Control muncul di layar.
+3. Tekan **Tambah Gerakan** pada Floating Control untuk masuk ke **Coordinate Picker**.
+4. Geser crosshair ke posisi tombol atau area layar (aktifkan mode 2 titik bila ingin memilih Start Position dan End Position untuk Swipe), lalu tekan **Confirm Location**.
+5. Pilih jenis action (`Tap`, `Double Tap`, `Long Press`, `Swipe`, `Scroll Up`, `Scroll Down`, atau `Wait`), atur durasi dan delay sebelum action berikutnya, lalu tekan **Simpan Action**.
+6. Ulangi langkah tersebut untuk menambah gerakan berikutnya, atau buka **Daftar** di Floating Control untuk mengedit, mengubah urutan, atau menghapus aksi.
+7. Tekan **Stop & Save** pada Floating Control, isi nama macro dan jumlah pengulangan, lalu simpan ke **My Macros**.
+8. Buka tab **My Macros**, pilih macro Anda, lalu tekan **Use Macro**. Pindah ke aplikasi target dan tekan **Play** pada Floating Control untuk menjalankannya.
 
 ---
 
 ## Menjalankan Unit Test
 
-Project ini menyertakan unit test JUnit4 di `app/src/test/java/com/autoscroll/app/ScrollConfigTest.kt` untuk menguji perhitungan interval, koordinat scroll, klasifikasi gesture macro, dan pengurutan aksi:
+Project ini menyertakan unit test JUnit4 di `app/src/test/java/com/autoscroll/app/ScrollConfigTest.kt` untuk menguji perhitungan interval, koordinat persentase layar, proyeksi piksel ke-7 jenis action, dan pengurutan aksi:
 
 ```bash
 gradle testDebugUnitTest

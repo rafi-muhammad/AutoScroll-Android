@@ -1,10 +1,34 @@
+# Gradle and Android build outputs
 .gradle/
 **/build/
+.externalNativeBuild/
+.cxx/
+captures/
+*.apk
+*.aab
+
+# Local machine and IDE files
 local.properties
 .idea/
 *.iml
-captures/
-.externalNativeBuild/
-.cxx/
-*.apk
-*.aab
+
+# Signing credentials and local secrets
+*.jks
+*.keystore
+*.p12
+*.pfx
+key.properties
+secrets.properties
+.env
+.env.*
+!.env.example
+
+# Local databases, logs, and OS metadata
+*.db
+*.sqlite
+*.sqlite3
+*.log
+hs_err_pid*
+*.hprof
+.DS_Store
+Thumbs.db
